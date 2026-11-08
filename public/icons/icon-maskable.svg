@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Resto POS">
+  <rect width="512" height="512" fill="#17130f"/>
+  <circle cx="256" cy="256" r="104" fill="none" stroke="#ffffff" stroke-width="22"/>
+  <circle cx="256" cy="256" r="42" fill="#c2410c"/>
+</svg>

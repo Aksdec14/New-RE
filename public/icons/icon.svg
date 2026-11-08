@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Resto POS">
+  <rect width="512" height="512" rx="116" fill="#17130f"/>
+  <circle cx="256" cy="256" r="128" fill="none" stroke="#ffffff" stroke-width="26"/>
+  <circle cx="256" cy="256" r="50" fill="#c2410c"/>
+  <path d="M256 92v40M256 380v40" stroke="#ffffff" stroke-width="24" stroke-linecap="round" opacity="0.35"/>
+</svg>
