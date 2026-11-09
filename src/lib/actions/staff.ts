@@ -146,6 +146,74 @@ export async function updateStaffRole(formData: FormData) {
   done("Role updated.");
 }
 
+/**
+ * Sets a brand-new password for a member's auth account — the no-email
+ * replacement for "forgot password" flows. The staff member tells the owner
+ * they forgot it; the owner types a new password here and hands it over.
+ *
+ * Gated on the caller being an owner/admin of the same workspace, and refuses
+ * to touch the caller's own account (that password change must re-verify the
+ * current password, which the Account screen already does).
+ */
+export async function resetStaffPassword(formData: FormData) {
+  const supabase = await createClient();
+  const restaurantId = field(formData, "restaurant_id");
+  const id = field(formData, "id");
+  const password = String(formData.get("password") ?? "");
+
+  if (!restaurantId || !id) fail("Missing member.");
+  if (password.length < 8) {
+    fail("Password must be at least 8 characters.");
+  }
+
+  // Gate on the caller's own membership before touching the admin API.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: membership } = await supabase
+    .from("memberships")
+    .select("role")
+    .eq("restaurant_id", restaurantId)
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (!membership || !["owner", "admin"].includes(membership.role)) {
+    fail("Only owners and admins can set staff passwords.");
+  }
+
+  // Resolve the target's auth user id from the membership row itself — this
+  // both scopes the lookup to the caller's tenant (RLS applies) and rejects
+  // ids from other restaurants.
+  const { data: target } = await supabase
+    .from("memberships")
+    .select("user_id, role")
+    .eq("id", id)
+    .eq("restaurant_id", restaurantId)
+    .maybeSingle();
+
+  if (!target) fail("Member not found in this workspace.");
+  if (target.user_id === user.id) {
+    fail("Use Account to change your own password.");
+  }
+  if (target.role === "owner") {
+    fail("The workspace owner's password cannot be reset here.");
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin.auth.admin.updateUserById(target.user_id, {
+    password,
+  });
+
+  if (error) fail(error.message);
+  done("New password set — share it with the member securely.");
+}
+
 export async function toggleStaff(formData: FormData) {
   const supabase = await createClient();
   const id = field(formData, "id");

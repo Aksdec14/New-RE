@@ -6,6 +6,7 @@ import { SubmitButton } from "@/components/submit-button";
 import {
   inviteStaff,
   removeStaff,
+  resetStaffPassword,
   toggleStaff,
   updateStaffRole,
 } from "@/lib/actions/staff";
@@ -101,6 +102,8 @@ export default async function StaffPage({
           person or over a secure channel, and the person changes it under{" "}
           <strong>Account</strong> after their first sign-in. Leave it empty to
           attach someone who already signed up; they keep their own password.
+          If a member forgets theirs, set a new one from their row in the
+          Members table below — no email is involved.
         </p>
       </section>
 
@@ -179,6 +182,26 @@ export default async function StaffPage({
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       {member.role !== "owner" ? (
                         <>
+                          <form action={resetStaffPassword} className="flex items-center gap-2">
+                            <input
+                              type="hidden"
+                              name="restaurant_id"
+                              value={restaurant.id}
+                            />
+                            <input type="hidden" name="id" value={member.id} />
+                            <input
+                              name="password"
+                              type="text"
+                              minLength={8}
+                              required
+                              className="input w-28 py-1 text-sm"
+                              placeholder="New password"
+                              autoComplete="off"
+                            />
+                            <SubmitButton className="btn btn-ghost px-2 py-1 text-xs">
+                              Set
+                            </SubmitButton>
+                          </form>
                           <form action={toggleStaff}>
                             <input
                               type="hidden"

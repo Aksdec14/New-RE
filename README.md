@@ -34,6 +34,11 @@ There is no payment gateway: every workspace is free and never expires.
   with email + initial password (auto-confirmed) or attach an existing account.
   Staff sign in and see only what their role allows; everyone can change their
   own password under Account (current password re-verified first).
+- **No-email password policy** — email confirmation is disabled, so accounts
+  exist only because the owner created them. A forgotten password is handled
+  personally: the member tells the owner, who sets a new one on the Staff
+  screen (no email involved) and shares it. Invented login-style emails
+  (`user@hisrestaurantname.com`) work fine as long as confirmation stays off.
 - **Excel/CSV menu import** — owners upload a spreadsheet of the whole menu
   (Name and Price required; Category, GST %, Veg, HSN optional). Categories
   are created on demand, duplicates skipped, every row re-validated
@@ -366,7 +371,10 @@ the browser, and `db:test` runs the 91-assertion suite in CI
 - No payment gateway; no trial or expiry. Every workspace is free forever.
   Renewal tooling can be added later without touching the app.
 - Staff accounts are created by the owner with an initial password; there is
-  no invitation email flow yet, so no SMTP dependency for adding staff.
+  no invitation email flow and no SMTP dependency — adding staff, confirming
+  accounts and resetting staff passwords (Staff screen, "Set password") all
+  happen without any email. Revisit only if remote hiring or public sign-up
+  ever demands real inboxes.
 - Inter-state GST is a per-bill flag (`p_is_interstate`); automatically deriving
   it from place of supply is Phase 1.
 - One workspace per page load. Multi-branch is Phase 6.
