@@ -49,6 +49,12 @@ There is no payment gateway: every workspace is free and never expires.
 
 ## Quick start
 
+> Re-testing from an empty database? `supabase/reset_data.sql` (paste into the
+> dashboard SQL editor) wipes every workspace plus auth accounts — schema,
+> policies, functions and the seeded plans stay. Hosted-Supabase quirk inside:
+> auth users are cleared with `DELETE`, because `TRUNCATE` on `auth.*` fails
+> with "must be owner of sequence".
+
 ```bash
 npm install
 cp .env.example .env.local     # fill in your Supabase URL + anon key
