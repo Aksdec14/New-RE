@@ -1,62 +1,76 @@
 import { BrandMark } from "@/components/brand-mark";
+import { DashboardNav } from "@/components/dashboard-nav";
+import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { logout } from "@/lib/actions/auth";
+import { roleLabel } from "@/lib/format";
+import { canBill, canManage, requireRestaurant } from "@/lib/restaurant";
 
-const NAV = [
-  { label: "Overview", active: true },
-  { label: "Menu", active: false },
-  { label: "Orders", active: false },
-  { label: "Billing", active: false },
-  { label: "Reports", active: false },
-];
-
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { restaurant, workspaces, user } = await requireRestaurant();
+
+  const items = [
+    { href: "/dashboard", label: "Overview" },
+    { href: "/dashboard/menu", label: "Menu" },
+    { href: "/dashboard/orders", label: "Orders" },
+    { href: "/dashboard/tables", label: "Tables" },
+  ];
+
+  if (canBill(restaurant.role)) {
+    items.push({ href: "/dashboard/billing", label: "Billing" });
+  }
+
+  if (canManage(restaurant.role)) {
+    items.push(
+      { href: "/dashboard/reports", label: "Reports" },
+      { href: "/dashboard/staff", label: "Staff" },
+      { href: "/dashboard/settings", label: "Settings" },
+    );
+  }
+
   return (
     <div className="min-h-dvh">
-      <header className="sticky top-0 z-20 border-b border-line bg-canvas/85 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
-          <div className="flex items-center gap-3">
-            <BrandMark />
-            <span className="text-sm font-medium">Resto POS</span>
-            <span className="badge border-line bg-surface text-muted">Phase 0</span>
+      <header className="sticky top-0 z-20 border-b border-line bg-canvas/90 backdrop-blur print:hidden">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="flex flex-wrap items-center gap-3 py-3">
+            <div className="flex items-center gap-3">
+              <BrandMark />
+              <div className="leading-tight">
+                <p className="text-sm font-medium">Resto POS</p>
+                <p className="text-[0.6875rem] muted">
+                  {roleLabel(restaurant.role)}
+                  {user.email ? ` · ${user.email}` : ""}
+                </p>
+              </div>
+            </div>
+
+            <div className="ml-auto flex items-center gap-2">
+              <WorkspaceSwitcher
+                restaurant={restaurant}
+                workspaces={workspaces}
+              />
+              <form action={logout}>
+                <button type="submit" className="btn btn-ghost px-3 py-1.5">
+                  Sign out
+                </button>
+              </form>
+            </div>
           </div>
 
-          <nav className="ml-6 hidden items-center gap-1 md:flex" aria-label="Main">
-            {NAV.map((item) =>
-              item.active ? (
-                <span
-                  key={item.label}
-                  className="rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-white"
-                >
-                  {item.label}
-                </span>
-              ) : (
-                <span
-                  key={item.label}
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted"
-                  title="Arriving in a later phase"
-                >
-                  {item.label}
-                  <span className="text-[0.625rem] uppercase tracking-wide text-muted/60">
-                    soon
-                  </span>
-                </span>
-              ),
-            )}
-          </nav>
-
-          <form action={logout} className="ml-auto">
-            <button type="submit" className="btn btn-ghost">
-              Sign out
-            </button>
-          </form>
+          <div className="flex items-center justify-between gap-3">
+            <DashboardNav
+              items={[...items, { href: "/dashboard/account", label: "Account" }]}
+            />
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+        {children}
+      </main>
     </div>
   );
 }

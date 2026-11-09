@@ -10,9 +10,9 @@ export const metadata = { title: "Set up your restaurant" };
 export default async function OnboardingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; new?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, new: addingAnother } = await searchParams;
   const supabase = await createClient();
 
   const {
@@ -28,7 +28,7 @@ export default async function OnboardingPage({
     .select("id")
     .limit(1);
 
-  if (existing && existing.length > 0) {
+  if (existing && existing.length > 0 && !addingAnother) {
     redirect("/dashboard");
   }
 
@@ -44,11 +44,11 @@ export default async function OnboardingPage({
 
       <div className="card">
         <h1 className="text-2xl font-semibold tracking-tight">
-          Set up your restaurant
+          {addingAnother ? "Add another workspace" : "Set up your restaurant"}
         </h1>
         <p className="mt-2 text-sm muted">
-          This creates the tenant, makes you the owner, and starts a 14-day trial.
-          Trial length and grace period come from the database, not the browser.
+          This creates the workspace, makes you the owner, and sets it up as a
+          free space — no trial, no payment, nothing expires.
         </p>
 
         {error ? (

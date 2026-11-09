@@ -15,7 +15,6 @@ next-env.d.ts
 .env
 .env.local
 .env.*.local
-.env.example
 
 # vercel
 .vercel
@@ -31,6 +30,9 @@ next-env.d.ts
 supabase/.branches
 supabase/.temp
 supabase/.env
+supabase/apply_all.sql
+supabase/reset_and_apply.sql
 
 # macOS
 .DS_Store
+/supabase/patch_cloud.sql

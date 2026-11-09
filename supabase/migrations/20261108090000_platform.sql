@@ -108,6 +108,17 @@ begin
   v_actor_id := auth.uid();
   v_reason := nullif(current_setting('app.audit_reason', true), '');
 
+  -- When the restaurant itself is being deleted, this trigger still fires for
+  -- every cascading child delete, but the parent row is already gone. Inserting
+  -- an audit row would violate audit_log_restaurant_id_fkey. Skip it: the
+  -- tenant's audit history is removed with the tenant (on delete cascade).
+  if v_restaurant_id is not null
+     and not exists (
+       select 1 from public.restaurants r where r.id = v_restaurant_id
+     ) then
+    return null;
+  end if;
+
   if v_actor_id is not null then
     select m.role into v_actor_role
     from public.memberships m

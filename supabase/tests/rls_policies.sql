@@ -781,7 +781,7 @@ select tests.assert(
 reset role;
 
 -- ===========================================================================
--- 14. Onboarding RPC (create tenant + owner + trial atomically)
+-- 14. Onboarding RPC (tenant + owner + free workspace, atomically)
 -- ===========================================================================
 select tests.claims('dddddddd-0000-0000-0000-000000000001');
 set local role authenticated;
@@ -805,21 +805,100 @@ select tests.assert(
   (select plan_id from public.subscriptions
    where restaurant_id = :'new_restaurant') = 'trial'
     and (select status from public.subscriptions
-         where restaurant_id = :'new_restaurant') = 'trialing',
-  'onboarding starts a trialing subscription on the trial plan'
+         where restaurant_id = :'new_restaurant') = 'active',
+  'onboarding starts an active subscription'
 );
 
 select tests.assert(
-  (select valid_until > now() + interval '13 days'
+  (select valid_until > now() + interval '99 years'
    from public.subscriptions
    where restaurant_id = :'new_restaurant'),
-  'the trial length comes from the plans table (14 days)'
+  'the workspace is free forever (no trial expiry)'
 );
 
 select tests.assert(
   (select is_writable from public.v_my_restaurants
    where id = :'new_restaurant') = true,
   'a freshly onboarded tenant is writable'
+);
+
+reset role;
+
+-- ===========================================================================
+-- 15. Tenant deletion
+-- ===========================================================================
+set local role service_role;
+
+delete from public.restaurants
+where id = '33333333-3333-3333-3333-333333333333';
+
+select tests.assert(
+  not exists (
+    select 1 from public.restaurants
+    where id = '33333333-3333-3333-3333-333333333333'
+  ),
+  'the service role can delete a tenant'
+);
+
+select tests.assert(
+  (select count(*) from public.memberships
+   where restaurant_id = '33333333-3333-3333-3333-333333333333') = 0,
+  'deleting a tenant cascades to memberships'
+);
+
+select tests.assert(
+  (select count(*) from public.audit_log
+   where restaurant_id = '33333333-3333-3333-3333-333333333333') = 0,
+  'deleting a tenant removes its audit trail without an FK error'
+);
+
+reset role;
+
+-- ===========================================================================
+-- 16. Staff directory and invites
+-- ===========================================================================
+select tests.claims('aaaaaaaa-0000-0000-0000-000000000001');
+set local role authenticated;
+
+select tests.assert(
+  (select count(*) from public.list_staff('11111111-1111-1111-1111-111111111111')) = 5,
+  'an owner sees every member of the workspace'
+);
+
+select tests.assert(
+  (select email from public.list_staff('11111111-1111-1111-1111-111111111111')
+   where role = 'waiter') = 'waiter-a@test.local',
+  'the staff directory resolves emails from auth.users'
+);
+
+select public.invite_staff(
+  '11111111-1111-1111-1111-111111111111',
+  'outsider@test.local',
+  'kitchen'
+);
+
+select tests.assert(
+  (select role from public.memberships
+   where restaurant_id = '11111111-1111-1111-1111-111111111111'
+     and user_id = 'dddddddd-0000-0000-0000-000000000001') = 'kitchen',
+  'an owner can attach an existing account by email'
+);
+
+reset role;
+
+select tests.claims('aaaaaaaa-0000-0000-0000-000000000002');
+set local role authenticated;
+
+select tests.assert_raises(
+  $$ select public.list_staff('11111111-1111-1111-1111-111111111111') $$,
+  'a waiter cannot read the staff directory',
+  '42501'
+);
+
+select tests.assert_raises(
+  $$ select public.invite_staff('11111111-1111-1111-1111-111111111111', 'x@test.local', 'waiter') $$,
+  'a waiter cannot invite staff',
+  '42501'
 );
 
 reset role;

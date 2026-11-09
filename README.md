@@ -1,11 +1,11 @@
-# Resto POS — Phase 0
+# Resto POS
 
 The foundation for the Supabase-based restaurant SaaS in the plan: schema,
 row level security, server-side GST billing, subscription gating, an
 offline-capable Next.js shell, and a test suite that proves tenant isolation.
 
-Phase 0 is deliberately boring: no menu screens, no order pad, no payment
-gateway yet. What exists is the part that is expensive to get wrong later.
+The data and security layer is Phase 0; the working POS screens are Phase 1.
+There is no payment gateway: every workspace is free and never expires.
 
 ---
 
@@ -29,10 +29,17 @@ gateway yet. What exists is the part that is expensive to get wrong later.
 - **Sequential per-tenant numbering** for orders, KOTs and bills.
 - **Auth + onboarding** — email/password sign-up, session refresh middleware,
   and a `create_restaurant()` RPC that atomically creates the tenant, makes the
-  caller owner, and starts the trial.
+  caller owner, and provisions a permanent free workspace.
+- **Owner-created staff accounts** — an owner/admin can create a staff account
+  with email + initial password (auto-confirmed) or attach an existing account.
+  Staff sign in and see only what their role allows; everyone can change their
+  own password under Account (current password re-verified first).
+- **Live screens** — the orders list, order detail and tables floor subscribe
+  to Supabase Realtime (`orders`, `order_items`, `dining_tables`) and
+  re-render server-side; RLS scopes every subscription to the member's tenant.
 - **PWA shell** — manifest, service worker, offline page, and an IndexedDB
   write queue with idempotency keys (queue wiring lands in Phase 3).
-- **83 passing security assertions** against a real Postgres instance.
+- **91 passing security assertions** against a real Postgres instance.
 
 ---
 
@@ -103,7 +110,10 @@ What the suite actually proves:
 | Tampering | Clients cannot update bills, payments or subscriptions directly |
 | Idempotency | Same client_id returns the same order; same payment key returns the same payment |
 | Audit | Price edits and bill voids are logged with actor role and reason |
+| Deletion | Deleting a tenant cascades memberships and audit rows without FK errors |
 | Operator path | `service_role` can extend a subscription manually |
+| Deletion | Deleting a tenant cascades memberships and audit rows without FK errors |
+| Staff | Owner reads the staff directory with emails; waiter cannot list or invite |
 
 You can also point it at a live project:
 
@@ -135,7 +145,9 @@ Key functions:
 
 | Function | Notes |
 | --- | --- |
-| `public.create_restaurant(...)` | Tenant + owner membership + trial, atomically |
+| `public.create_restaurant(...)` | Tenant + owner membership + free subscription, atomically |
+| `public.list_staff(...)` | Owner/admin-only staff directory joining `auth.users` |
+| `public.invite_staff(...)` | Attach an existing account to a workspace by email |
 | `public.create_order(...)` | Idempotent, validates table/menu ownership, snapshots prices |
 | `public.add_order_items(...)` | Only while the order is new/preparing |
 | `public.update_order_status(...)` | Kitchen may only set `preparing`/`served` |
@@ -249,7 +261,7 @@ src/
   middleware.ts                session refresh + route protection
 supabase/
   migrations/                  schema, RLS, functions, realtime
-  tests/rls_policies.sql       83-assertion security suite
+  tests/rls_policies.sql       91-assertion security suite
   seed.sql                     optional demo tenant
 scripts/
   db-test.sh                   throwaway Postgres + migrations + tests
@@ -272,9 +284,12 @@ scripts/
 
 ---
 
-## Before real customers
+## Production checklist
 
-These are dashboard/ops tasks, not code:
+Code-side hardening is done: security headers ship from `next.config.ts`,
+money math and access control live in Postgres, no service key ever reaches
+the browser, and `db:test` runs the 91-assertion suite in CI
+(`npm run db:test`). What remains is dashboard/ops work:
 
 - [ ] Enable **MFA (TOTP)** for owner and admin accounts; enforce it in the app.
 - [ ] Configure auth **rate limits** and a custom SMTP provider.
@@ -290,6 +305,16 @@ These are dashboard/ops tasks, not code:
       `orders`, `order_items`, `dining_tables` and `bills` are published.
 - [ ] Test 58mm and 80mm printing on the actual printer before the pilot.
 - [ ] Publish terms and a privacy policy (DPDP Act).
+- [ ] Host the app (Vercel or similar) with `NEXT_PUBLIC_SUPABASE_URL`,
+      `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SITE_URL` and
+      `SUPABASE_SERVICE_ROLE_KEY` as server-only env vars.
+- [ ] Point Signup email confirmations at a real SMTP provider and verify the
+      confirmation/reset emails deliver from your own domain.
+- [ ] Rotate keys that were shared during development, including the Supabase
+      database password and service-role key.
+- [ ] Enforce email domain checks if staff should only come from your domain.
+
+---
 
 ---
 
@@ -298,7 +323,8 @@ These are dashboard/ops tasks, not code:
 | Phase | Status |
 | --- | --- |
 | 0 · Setup, schema, RLS, tests | **Done** |
-| 1 · Core billing UI (menu, orders, bills, prints, reports) | Next |
+| 1 · Core billing UI (menu, orders, bills, prints, reports, staff) | **Done** |
+| 2 · Realtime kitchen/waiter screens, PIN switching, audit UI | Live refresh shipped; PIN + audit UI remain |
 | 2 · Realtime kitchen/waiter screens, PIN switching, audit UI | Schema ready |
 | 3 · Offline mode wired into the order screen | Queue + idempotency ready |
 | 4 · Plans, manual renewal, expiry banners, read-only | Gating + service-role path ready |
@@ -309,10 +335,10 @@ These are dashboard/ops tasks, not code:
 
 ## Deliberate deferrals
 
-- No menu/order UI yet; Phase 0 is the data and security layer.
-- No payment gateway. Subscriptions are extended manually through
-  `service_role`; the model, gating and operator write path are in place and
-  tested.
+- No payment gateway; no trial or expiry. Every workspace is free forever.
+  Renewal tooling can be added later without touching the app.
+- Staff accounts are created by the owner with an initial password; there is
+  no invitation email flow yet, so no SMTP dependency for adding staff.
 - Inter-state GST is a per-bill flag (`p_is_interstate`); automatically deriving
   it from place of supply is Phase 1.
 - One workspace per page load. Multi-branch is Phase 6.

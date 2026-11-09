@@ -248,6 +248,16 @@ export type AuditLogRow = {
   created_at: string;
 };
 
+export type StaffRow = {
+  id: string;
+  user_id: string;
+  email: string;
+  role: AppRole;
+  is_active: boolean;
+  joined_at: string | null;
+  is_self: boolean;
+};
+
 export type MyRestaurantRow = {
   id: string;
   name: string;
@@ -310,6 +320,14 @@ export interface Database {
           p_state_code?: string | null;
           p_timezone?: string | null;
         };
+        Returns: string;
+      };
+      list_staff: {
+        Args: { p_restaurant_id: string };
+        Returns: StaffRow[];
+      };
+      invite_staff: {
+        Args: { p_restaurant_id: string; p_email: string; p_role: string };
         Returns: string;
       };
       create_order: {

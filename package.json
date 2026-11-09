@@ -8,6 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "db:test": "./scripts/db-test.sh",
+    "db:push": "./scripts/db-push.sh",
     "db:types": "supabase gen types typescript --local > src/lib/types/database.ts",
     "db:reset": "supabase db reset"
   },
