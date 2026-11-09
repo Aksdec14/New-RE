@@ -1,5 +1,6 @@
 import { Flash } from "@/components/flash";
 import { PageHeader } from "@/components/page-header";
+import { MenuImportForm } from "@/components/menu-import-form";
 import { SubmitButton } from "@/components/submit-button";
 import {
   createCategory,
@@ -67,7 +68,8 @@ export default async function MenuPage({
       <Flash error={error} ok={ok} />
 
       {manager ? (
-        <section className="grid gap-4 lg:grid-cols-2">
+        <>
+          <section className="grid gap-4 lg:grid-cols-2">
           <div className="card">
             <h2 className="text-base font-semibold">Add a category</h2>
             <form action={createCategory} className="mt-4 space-y-3">
@@ -219,6 +221,20 @@ export default async function MenuPage({
             </form>
           </div>
         </section>
+
+        <section className="card">
+          <h2 className="text-base font-semibold">
+            Import a menu from Excel or CSV
+          </h2>
+          <p className="mt-2 text-sm muted">
+            Upload your menu in one go — new categories are created for you,
+            duplicates are skipped. Use the template for the expected columns:
+            Name and Price are required; Category, GST %, Veg, HSN and
+            Description are optional.
+          </p>
+          <MenuImportForm restaurantId={restaurant.id} />
+        </section>
+        </>
       ) : (
         <p className="rounded-xl border border-line bg-surface px-4 py-3 text-sm muted">
           You can view the menu. Only owners and admins can edit it.

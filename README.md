@@ -34,12 +34,16 @@ There is no payment gateway: every workspace is free and never expires.
   with email + initial password (auto-confirmed) or attach an existing account.
   Staff sign in and see only what their role allows; everyone can change their
   own password under Account (current password re-verified first).
+- **Excel/CSV menu import** — owners upload a spreadsheet of the whole menu
+  (Name and Price required; Category, GST %, Veg, HSN optional). Categories
+  are created on demand, duplicates skipped, every row re-validated
+  server-side. A downloadable template matches the expected columns.
 - **Live screens** — the orders list, order detail and tables floor subscribe
   to Supabase Realtime (`orders`, `order_items`, `dining_tables`) and
   re-render server-side; RLS scopes every subscription to the member's tenant.
 - **PWA shell** — manifest, service worker, offline page, and an IndexedDB
   write queue with idempotency keys (queue wiring lands in Phase 3).
-- **91 passing security assertions** against a real Postgres instance.
+- **108 passing security assertions** against a real Postgres instance.
 
 ---
 
@@ -195,6 +199,24 @@ way in.
 
 ### Subscription read-only mode
 
+### How money is computed (and proven)
+
+Order totals come from per-line triggers; the bill recomputes from scratch:
+
+1. **Line level** — `line_total = round(qty x price, 2) - line_discount`,
+   `line_tax = round(line_total x tax_rate, 2)`.
+2. **Bill level** — the discount (₹ or %) is applied to the whole subtotal,
+   then spread **proportionally across GST slabs**, so a 10% food discount
+   lowers both the 5% and the 12% buckets by 10%. Each slab's tax is rounded
+   to the paisa and split CGST/SGST with the odd paisa going to SGST, so the
+   split always adds back to the slab tax exactly. IGST replaces the split
+   for inter-state supply.
+3. **Daily summaries** — refreshed by triggers on every bill/payment change;
+   voided bills are excluded from net sales but tracked in `void_amount`.
+
+Section 17 of the test suite pins these rules to exact values (mixed 5%+12%
+slabs, 10% discount, paisa payments, IGST bill, per-mode roll-ups).
+
 `private.is_writable()` is true only while the row is `trialing`, `active` or
 `past_due` **and** `now() < valid_until + grace_period_days`. It is called:
 
@@ -261,7 +283,7 @@ src/
   middleware.ts                session refresh + route protection
 supabase/
   migrations/                  schema, RLS, functions, realtime
-  tests/rls_policies.sql       91-assertion security suite
+  tests/rls_policies.sql       108-assertion security suite
   seed.sql                     optional demo tenant
 scripts/
   db-test.sh                   throwaway Postgres + migrations + tests

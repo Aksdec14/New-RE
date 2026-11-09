@@ -903,6 +903,181 @@ select tests.assert_raises(
 
 reset role;
 
+-- ===========================================================================
+-- 17. Calculation proofs (exact paise-level money math)
+--
+-- Mixed 12% + 5% slabs with a 10% bill discount. Expected values were derived
+-- independently (see README "How money is computed"): the discount is spread
+-- proportionally across slabs, each slab's tax is rounded, and CGST/SGST are
+-- an exact split of that slab tax.
+--
+--   A: 3 x 99.55 @ 12%   = 298.65    B: 1 x 149.99 @ 5% = 149.99
+--   subtotal 448.64, discount 44.86, taxable 403.78
+--   slab A taxable 268.79 (tax 32.25), slab B taxable 134.99 (tax 6.75)
+--   CGST 19.51 + SGST 19.49 = 39.00, total 442.78
+-- ===========================================================================
+select tests.claims('aaaaaaaa-0000-0000-0000-000000000001');
+set local role authenticated;
+
+insert into public.menu_items (id, restaurant_id, category_id, name, price, tax_rate, is_available)
+values
+  ('e0000000-0000-4000-8000-000000000006', '11111111-1111-1111-1111-111111111111',
+   'c0000000-0000-4000-8000-000000000001', 'Odd Penny Pakoda', 99.55, 12.00, true),
+  ('e0000000-0000-4000-8000-000000000007', '11111111-1111-1111-1111-111111111111',
+   'c0000000-0000-4000-8000-000000000001', 'Odd Penny Lassi', 149.99, 5.00, true);
+
+select public.create_order(
+  p_restaurant_id => '11111111-1111-1111-1111-111111111111',
+  p_client_id => 'a0000000-0000-4000-8000-000000000006',
+  p_items => '[
+    {"menu_item_id":"e0000000-0000-4000-8000-000000000006","quantity":3},
+    {"menu_item_id":"e0000000-0000-4000-8000-000000000007","quantity":1}
+  ]'::jsonb
+) as order5 \gset
+
+select tests.assert(
+  (select subtotal from public.orders where id = :'order5') = 448.64
+    and (select tax_total from public.orders where id = :'order5') = 43.34
+    and (select total from public.orders where id = :'order5') = 491.98,
+  'order totals use per-line GST before any bill discount (448.64 / 43.34 / 491.98)'
+);
+
+select public.generate_bill(p_order_id => :'order5', p_discount_percent => 10) as bill5 \gset
+
+select tests.assert(
+  (select discount_amount from public.bills where id = :'bill5') = 44.86,
+  'a 10 percent discount on 448.64 is 44.86'
+);
+
+select tests.assert(
+  (select taxable_total from public.bills where id = :'bill5') = 403.78,
+  'taxable value is subtotal minus discount (403.78)'
+);
+
+select tests.assert(
+  (select cgst_total from public.bills where id = :'bill5') = 19.51
+    and (select sgst_total from public.bills where id = :'bill5') = 19.49
+    and (select igst_total from public.bills where id = :'bill5') = 0.00
+    and (select tax_total from public.bills where id = :'bill5') = 39.00,
+  'tax is computed per slab after proportional discount (CGST 19.51 + SGST 19.49)'
+);
+
+select tests.assert(
+  (select total from public.bills where id = :'bill5') = 442.78,
+  'bill total is taxable + tax (442.78)'
+);
+
+select tests.assert(
+  (select e->>'taxable' from jsonb_array_elements(
+     (select tax_breakup from public.bills where id = :'bill5')) as e
+   where (e->>'rate')::numeric = 12) = '268.79'
+    and (select e->>'taxable' from jsonb_array_elements(
+     (select tax_breakup from public.bills where id = :'bill5')) as e
+   where (e->>'rate')::numeric = 5) = '134.99',
+  'the discount is spread proportionally across slabs (268.79 + 134.99 = 403.78)'
+);
+
+select tests.assert(
+  (select sum((e->>'cgst')::numeric + (e->>'sgst')::numeric
+              + (e->>'igst')::numeric)
+     from jsonb_array_elements(
+       (select tax_breakup from public.bills where id = :'bill5')) as e) = 39.00,
+  'the tax breakup adds up to the bill tax total'
+);
+
+select tests.assert(
+  (select sum((e->>'taxable')::numeric) from jsonb_array_elements(
+     (select tax_breakup from public.bills where id = :'bill5')) as e)
+    = (select taxable_total from public.bills where id = :'bill5'),
+  'the allocated taxable value across slabs matches the bill taxable total'
+);
+
+select tests.assert(
+  (select status from public.bills where id = :'bill5') = 'unpaid',
+  'a discounted bill without payment mode is unpaid'
+);
+
+select tests.assert_raises(
+  format('select public.record_payment(p_bill_id => %L, p_mode => %L, p_amount => 442.79)',
+         :'bill5', 'cash'),
+  'paying one paisa too much is rejected',
+  '22023'
+);
+
+select public.record_payment(p_bill_id => :'bill5', p_mode => 'upi', p_amount => 442.77);
+
+select tests.assert(
+  (select status from public.bills where id = :'bill5') = 'partial',
+  'the discounted bill is partial at 442.77 of 442.78'
+);
+
+select public.record_payment(p_bill_id => :'bill5', p_mode => 'cash', p_amount => 0.01);
+
+select tests.assert(
+  (select status from public.bills where id = :'bill5') = 'paid'
+    and (select sum(amount) from public.payments where bill_id = :'bill5') = 442.78,
+  'single-paisa settlement closes the bill exactly'
+);
+
+-- Into-state supply: IGST replaces CGST/SGST entirely.
+select public.create_order(
+  p_restaurant_id => '11111111-1111-1111-1111-111111111111',
+  p_client_id => 'a0000000-0000-4000-8000-000000000007',
+  p_items => '[
+    {"menu_item_id":"e0000000-0000-4000-8000-000000000006","quantity":1},
+    {"menu_item_id":"e0000000-0000-4000-8000-000000000007","quantity":2}
+  ]'::jsonb
+) as order6 \gset
+
+select public.generate_bill(
+  p_order_id => :'order6',
+  p_payment_mode => 'card',
+  p_is_interstate => true
+) as bill6 \gset
+
+select tests.assert(
+  (select subtotal from public.bills where id = :'bill6') = 399.53
+    and (select cgst_total from public.bills where id = :'bill6') = 0.00
+    and (select sgst_total from public.bills where id = :'bill6') = 0.00
+    and (select igst_total from public.bills where id = :'bill6') = 26.95
+    and (select total from public.bills where id = :'bill6') = 426.48,
+  'inter-state bills pay IGST of 26.95 and total 426.48'
+);
+
+-- The daily roll-up must equal the source rows it is derived from.
+select tests.assert(
+  (select net_sales from public.daily_summaries
+   where restaurant_id = '11111111-1111-1111-1111-111111111111'
+     and summary_date = (now() at time zone 'Asia/Kolkata')::date) = 1703.76,
+  'net sales roll up to 834.50 + 442.78 + 426.48 = 1703.76'
+);
+
+select tests.assert(
+  (select card_total from public.daily_summaries
+   where restaurant_id = '11111111-1111-1111-1111-111111111111'
+     and summary_date = (now() at time zone 'Asia/Kolkata')::date) = 544.48
+    and (select upi_total from public.daily_summaries
+   where restaurant_id = '11111111-1111-1111-1111-111111111111'
+     and summary_date = (now() at time zone 'Asia/Kolkata')::date) = 542.77,
+  'payment mode totals roll up per mode (card 118 + 426.48, UPI 100 + 442.77)'
+);
+
+select tests.assert(
+  (select cash_total from public.daily_summaries
+   where restaurant_id = '11111111-1111-1111-1111-111111111111'
+     and summary_date = (now() at time zone 'Asia/Kolkata')::date) = 616.51,
+  'cash totals carry the one-paisa settlement (433 + 183.50 + 0.01)'
+);
+
+select tests.assert(
+  (select void_amount from public.daily_summaries
+   where restaurant_id = '11111111-1111-1111-1111-111111111111'
+     and summary_date = (now() at time zone 'Asia/Kolkata')::date) = 315.00,
+  'voided amounts are still excluded from net sales after new bills'
+);
+
+reset role;
+
 select 'ALL TESTS PASSED' as result;
 
 rollback;
